@@ -1,0 +1,58 @@
+name: Publish architecture site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "architecture/workspace.dsl"
+      - ".github/workflows/publish-architecture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  # Non-hardened Noble tag, recommended by Structurizr for CI environments.
+  # Check https://hub.docker.com/r/structurizr/structurizr/tags for the current release
+  # and bump this periodically.
+  STRUCTURIZR_IMAGE: structurizr/structurizr:2026.06.28-noble
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workspace
+        run: |
+          docker run --rm -v "$PWD:/usr/local/structurizr" $STRUCTURIZR_IMAGE \
+            validate -workspace /usr/local/structurizr/architecture/workspace.dsl
+
+      - name: Export static site
+        run: |
+          mkdir -p site
+          docker run --rm -v "$PWD:/usr/local/structurizr" $STRUCTURIZR_IMAGE \
+            export -workspace /usr/local/structurizr/architecture/workspace.dsl -format static -output /usr/local/structurizr/site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

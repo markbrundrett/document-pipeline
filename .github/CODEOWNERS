@@ -1,0 +1,38 @@
+# CODEOWNERS — mirrors the Architecture Constraints table in
+# .specify/memory/constitution.md. Tech leads own their system end-to-end
+# (Team Topologies: stream-aligned teams own their domain; this file is how
+# GitHub enforces that at review time).
+#
+# Replace the placeholder handles/teams below with real GitHub usernames or
+# @antlerbio/<team-slug> teams before this file does anything useful — GitHub
+# ignores entries pointing at accounts/teams that don't exist or can't be
+# resolved.
+
+# Fallback: anyone not covered by a more specific rule below
+*                                   @antlerbio/eng-leads
+
+# Governance — changes here should get eyes from whoever owns the process itself
+/.specify/memory/constitution.md   @antlerbio/eng-leads
+/.specify/                         @antlerbio/eng-leads
+
+# Architecture model + decisions — the source of truth for Principle II
+/architecture/                     @antlerbio/architecture
+
+# Data lake (S3 + Lake Formation + Glue)
+# /data-lake/                      @antlerbio/data-platform
+
+# Bioinformatics pipelines (Nextflow on AWS Batch)
+# /pipelines/                      @antlerbio/bioinformatics
+
+# Agentic layer (Bedrock agents, guardrails, knowledge bases)
+# /agents/                         @antlerbio/ai-platform
+
+# Data science (SageMaker)
+# /notebooks/  /ds/                @antlerbio/data-science
+
+# CI/CD, Dependabot, security workflow config
+/.github/                          @antlerbio/eng-leads
+
+# Uncomment and adjust the domain rows above once the starter project's real
+# directory layout exists — /speckit-plan's Implementation Phases should tell
+# you what those top-level folders will actually be called.

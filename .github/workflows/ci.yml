@@ -1,0 +1,90 @@
+name: CI
+
+# Enforces the constitution's Development Workflow & Quality Gates table:
+# coverage >= 80%, SAST clean, dependency scan clean, every commit.
+#
+# This is a template repo, so there's no source yet — the test/coverage job is
+# written to pass gracefully on an empty project (pytest exit code 5 = "no
+# tests collected") rather than block the template itself from being green.
+# The moment real Python code + tests land, the gate becomes real.
+#
+# Assumes Python. If a project built from this template uses a different
+# language, replace the "Lint" and "Test + coverage" jobs — CodeQL and the
+# dependency review job are language-agnostic and can stay as-is.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run ruff (no-op if no Python files yet)
+        run: |
+          pip install ruff --quiet
+          if git ls-files '*.py' | grep -q .; then
+            ruff check .
+          else
+            echo "No Python files yet — skipping lint."
+          fi
+
+  test-and-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov --quiet
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e . --quiet || true; fi
+      - name: Run tests with coverage gate (>= 80%)
+        run: |
+          set +e
+          pytest --cov=. --cov-report=term-missing --cov-fail-under=80
+          status=$?
+          set -e
+          if [ $status -eq 5 ]; then
+            echo "No tests collected yet — template repo has no source. Not failing the build."
+            exit 0
+          fi
+          exit $status
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@v3
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
