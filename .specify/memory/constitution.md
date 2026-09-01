@@ -60,9 +60,42 @@ Sync Impact Report
 - workspace.dsl updated to add the ontology container and its relationships
 - Follow-up TODOs: resolve Domain/Master Data Model and Semantic Layer via ADR as real
   projects surface the need, as before
+
+- Version: 1.4.0 → 2.0.0 (MAJOR — document rescoped from org-wide to project-scoped,
+  architecture constraints removed)
+- Retitled: "AntlerBio Engineering Constitution" → "AntlerBio Document Pipeline
+  Constitution". This file now governs the document-pipeline project only; the org-wide
+  constitution continues to live in the AntlerBio Spec Kit template repository. Added a
+  Scope paragraph naming the inherited baseline (v1.4.0) and the project adoption date
+- Principles: all five carried over unchanged in wording and intent (no renames)
+- Removed sections: five Architecture Constraints rows not used by this project —
+  Bioinformatics Pipelines (Nextflow on AWS Batch), Data Science (SageMaker),
+  Domain / Master Data Model (TBD), Semantic Layer (TBD), Analytics Agents (TBD). These
+  remain in force platform-wide; they are simply out of scope here. This removal is what
+  makes the bump MAJOR rather than MINOR
+- Added: Entity Resolution row (TBD) — promotes the follow-up TODO carried since v1.2.0
+  into an explicit, blocking architecture gap, since this is the project where literature
+  mentions must be mapped to canonical identifiers. Carries one hard rule that applies
+  before the ADR lands: unresolved free-text mentions MUST NOT be written to the graph as
+  canonical entities
+- Retained: Data Lake, Query Engine, Agentic Layer, Knowledge Graph, Ontology,
+  Architecture Model, Ticketing, Org Model — each narrowed in its Notes to what this
+  project actually does with it
+- Governance: added the upstream-sync rule — amendments touching an inherited principle
+  must be raised against the template repository, not diverged silently here
+- Follow-up TODOs: resolve Entity Resolution via ADR during /speckit-plan for the first
+  extraction feature; it must not be left open past plan acceptance
 -->
 
-# AntlerBio Engineering Constitution
+# AntlerBio Document Pipeline Constitution
+
+**Scope**: This constitution governs the `document-pipeline` project — ingesting scientific
+literature and related documents, extracting biological entities and relationships from
+them, and loading those into the AntlerBio biological knowledge graph against the OBO
+ontology layer. It is derived from the AntlerBio Engineering Constitution v1.4.0 and adopted
+by this project on 2026-09-01. The five Core Principles below are inherited verbatim and are
+not project-local; the Architecture Constraints table is narrowed to the layers this project
+actually builds on.
 
 ## Core Principles
 
@@ -113,18 +146,20 @@ with the same rigor as any other engineering cost line.
 
 ## Architecture Constraints
 
+Narrowed to the layers `document-pipeline` builds on. Platform-wide layers this project
+does not use — bioinformatics pipelines, the data science workbench, the semantic layer,
+analytics agents, and the domain/master data model — remain governed by the org-wide
+AntlerBio Engineering Constitution and are out of scope here. A plan that needs one of
+them MUST cite that document and record an ADR, rather than reintroducing the row locally.
+
 | Layer | Technology | Notes |
 |---|---|---|
-| Data Lake | Amazon S3 + AWS Lake Formation + Glue Data Catalog + Apache Iceberg table format | Governed permissions and tags at the Lake Formation layer, not ad hoc bucket policies. Iceberg via Glue's native Iceberg REST Catalog API — no separate catalog service by default (see Knowledge Graph row for the one accepted exception; a future multi-engine/multi-cloud need would justify Apache Polaris, decided via ADR, not assumed). External system data lands in an unclassified staging zone first — nothing reaches governed bronze until it's classified and validated |
-| Bioinformatics Pipelines | Nextflow on AWS Batch, Spot by default | nf-core pipelines preferred over bespoke workflows where one exists. Spot is the default, not an optimization to revisit later — Nextflow's native retry/error-strategy handles reclamation, so on-demand needs its own justification, not the other way round |
-| Query Engine | Amazon Athena | Standard SQL over Iceberg tables via the Glue Catalog — the default consumption path for scientists and the DS workbench alike |
-| Agentic Layer | Amazon Bedrock AgentCore (Runtime, Gateway, Memory, Identity) + Guardrails, Knowledge Bases | Guardrails required on every agent handling PII or external input; Gateway is the only sanctioned path from an agent to a tool or external system |
-| Knowledge Graph | Neo4j (GraphRAG) — deviation from AWS-native, see `architecture/decisions/0002-neo4j-graphrag-for-biological-knowledge-graph.md` | For structured biological entities (genes, proteins, pathways, biomarkers, interventions) and multi-hop queries; Bedrock Knowledge Bases remain the vector-search layer for source-passage retrieval, not entity relationships |
-| Ontology | Neo4j subgraph, seeded via neosemantics (n10s) from OBO Foundry ontologies (Gene Ontology, ChEBI, Mondo, Uberon) | Class/schema layer (TBox) — distinct from the Knowledge Graph's instance data (ABox). Extracted entities reference ontology classes via `instance_of` edges rather than each project inventing its own taxonomy. Same Neo4j instance as the Knowledge Graph, not a separate system |
-| Domain / Master Data Model | **TBD**, leaning toward convergence with the graph | AntlerBio's own entity relationships (e.g. farm → cow → experiment, cow → phenotype). For the conceptual/classification layer, leans toward a local extension of the Ontology row rather than a separate taxonomy; operational/transactional data (raw readings, batch logs) still defaults to Iceberg tables. Decide the full split via ADR when a project first needs to model it |
-| Semantic Layer | **TBD** | A governed, single-definition layer for business metrics (e.g. "differential expression," "responder") above raw Iceberg tables. Not yet decided between a dbt-style semantic layer, Cube, or a graph-native approach. Watch Apache Ossie (incubating since July 2026) as the emerging cross-tool interchange format for these definitions — weight the eventual engine choice toward Ossie support rather than adopting Ossie itself yet, since it has no production engine behind it today. Needed before two projects quietly define the same metric two different ways — decide via ADR before that happens, not after |
-| Analytics Agents | **TBD** | Natural-language query agents over the lake and/or knowledge graph, for scientists who don't write SQL or Cypher — distinct from the Agentic Layer's extraction role. Likely AgentCore-hosted, querying via Athena and/or the Knowledge Graph, but undesigned. Decide via ADR once a project actually needs scientist-facing NL query |
-| Data Science | Amazon SageMaker | Model development, training, and experimentation |
+| Data Lake | Amazon S3 + AWS Lake Formation + Glue Data Catalog + Apache Iceberg table format | Landing and curation zone for source documents and extraction outputs. Governed permissions and tags at the Lake Formation layer, not ad hoc bucket policies. Iceberg via Glue's native Iceberg REST Catalog API — no separate catalog service by default. Source documents land in an unclassified staging/quarantine zone first: nothing reaches governed bronze until its licensing and redistribution terms are classified alongside the usual validation |
+| Query Engine | Amazon Athena | Standard SQL over Iceberg tables via the Glue Catalog — the tabular counterpart to Cypher over the graph. Extraction provenance, run metadata, and per-document processing state are queryable here |
+| Agentic Layer | Amazon Bedrock AgentCore (Runtime, Gateway, Memory, Identity) + Guardrails, Knowledge Bases | The extraction engine for this project. Guardrails required on every agent handling PII or external input — every ingested document counts as external input. Gateway is the only sanctioned path from an agent to a tool or external system. Bedrock Knowledge Bases remain the vector-search layer for source-passage retrieval, not entity relationships |
+| Knowledge Graph | Neo4j (GraphRAG) — see `architecture/decisions/0002-neo4j-graphrag-for-biological-knowledge-graph.md` | Destination for extracted entities (genes, proteins, pathways, biomarkers, indications, interventions) and their relationships, plus multi-hop query. Every extracted assertion carries provenance back to its source document and passage — Principle IV is enforced structurally in the graph, not left to the agent's prose |
+| Ontology | Neo4j subgraph, seeded via neosemantics (n10s) from OBO Foundry ontologies (Gene Ontology, ChEBI, Mondo, Uberon) | Class/schema layer (TBox) — distinct from the Knowledge Graph's instance data (ABox). Extracted entities reference ontology classes via `instance_of` edges rather than this project inventing its own taxonomy. Same Neo4j instance as the Knowledge Graph, not a separate system |
+| Entity Resolution | **TBD** — blocking, must be settled by first plan acceptance | Mapping literature mentions to canonical identifiers (HGNC, UniProt, ChEBI, Mondo) before an entity is written to the graph. Carried as an open gap since constitution v1.2.0; this is the project where it surfaces, so it MUST be decided via ADR during `/speckit-plan` for the first extraction feature rather than deferred again. One rule applies ahead of that ADR: unresolved free-text mentions MUST NOT be written into the graph as though they were canonical entities — they are either resolved, or quarantined for review |
 | Architecture Model | C4 via Structurizr DSL, published as a static site (GitHub Pages) | Free/open-source `export` command only — no paid Structurizr license required |
 | Ticketing | Jira | `tasks.md` task IDs reference Jira issue keys; Jira is the execution-tracking mirror, `tasks.md` remains the spec-of-record |
 | Org Model | Team Topologies | Stream-aligned teams own their systems end-to-end; platform team owns shared reference architecture and tooling |
@@ -150,12 +185,18 @@ away, regardless of how capable the tooling becomes.
 
 ## Governance
 
-This constitution supersedes ad hoc process decisions. Amendments require a documented
-rationale, review by the accountable tech leads, and a version bump following semantic
-versioning: MAJOR for incompatible governance or principle removals, MINOR for a new
-principle or materially expanded guidance, PATCH for wording/clarification only. All
-specs, plans, and PR reviews are expected to verify compliance with this document;
+This constitution supersedes ad hoc process decisions within `document-pipeline`. Amendments
+require a documented rationale, review by the accountable tech leads, and a version bump
+following semantic versioning: MAJOR for incompatible governance or principle removals,
+MINOR for a new principle or materially expanded guidance, PATCH for wording/clarification
+only. All specs, plans, and PR reviews are expected to verify compliance with this document;
 complexity that violates a principle must be explicitly justified in the plan's Risks
 section, not silently introduced.
 
-**Version**: 1.4.0 | **Ratified**: 2026-08-23 | **Last Amended**: 2026-08-31
+Because the five Core Principles are inherited rather than project-local, an amendment that
+changes a principle's meaning MUST be raised against the AntlerBio Spec Kit template
+repository and adopted here from that change — this project does not fork the principles
+silently. Project-local amendments are confined to the Scope paragraph, the Architecture
+Constraints table, and project-specific gates.
+
+**Version**: 2.0.0 | **Ratified**: 2026-08-23 | **Last Amended**: 2026-09-01
