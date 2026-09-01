@@ -3,14 +3,20 @@ name: CI
 # Enforces the constitution's Development Workflow & Quality Gates table:
 # coverage >= 80%, SAST clean, dependency scan clean, every commit.
 #
-# This is a template repo, so there's no source yet — the test/coverage job is
-# written to pass gracefully on an empty project (pytest exit code 5 = "no
-# tests collected") rather than block the template itself from being green.
-# The moment real Python code + tests land, the gate becomes real.
+# There's no source yet, so each gate is guarded by an explicit detection step:
+# the job always runs and reports green, but the gate itself only executes once
+# the thing it gates actually exists (Python files, test files, dependency
+# manifests). Detection is by tracked-file presence, not by exit-code guessing —
+# a job that reports green here means "nothing to check yet", and the moment
+# real code lands the gate becomes real with no workflow change needed.
+#
+# Jobs always run rather than using job-level `if:` so that every check reports
+# a genuine success. Skipped jobs interact badly with required status checks if
+# branch protection is turned on later.
 #
 # Assumes Python. If a project built from this template uses a different
-# language, replace the "Lint" and "Test + coverage" jobs — CodeQL and the
-# dependency review job are language-agnostic and can stay as-is.
+# language, replace the "lint" and "test-and-coverage" jobs and the `python`
+# detection below — CodeQL and dependency review are language-agnostic.
 
 on:
   push:
@@ -27,59 +33,109 @@ permissions:
   contents: read
 
 jobs:
-  lint:
+  detect:
     runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.check.outputs.python }}
+      tests: ${{ steps.check.outputs.tests }}
+      manifests: ${{ steps.check.outputs.manifests }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Run ruff (no-op if no Python files yet)
+      - name: Detect what exists to gate on
+        id: check
         run: |
-          pip install ruff --quiet
           if git ls-files '*.py' | grep -q .; then
-            ruff check .
+            echo "python=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No Python files yet — skipping lint."
+            echo "python=false" >> "$GITHUB_OUTPUT"
           fi
 
-  test-and-coverage:
+          if git ls-files 'test_*.py' '*_test.py' 'tests/**/*.py' | grep -q .; then
+            echo "tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git ls-files 'requirements*.txt' 'pyproject.toml' 'setup.py' \
+                          'setup.cfg' 'Pipfile' 'poetry.lock' | grep -q .; then
+            echo "manifests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "manifests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summarise
+        run: |
+          {
+            echo "| Gate input | Present |"
+            echo "|---|---|"
+            echo "| Python files | ${{ steps.check.outputs.python }} |"
+            echo "| Test files | ${{ steps.check.outputs.tests }} |"
+            echo "| Dependency manifests | ${{ steps.check.outputs.manifests }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    needs: detect
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.detect.outputs.python == 'true'
       - uses: actions/setup-python@v5
+        if: needs.detect.outputs.python == 'true'
+        with:
+          python-version: "3.12"
+      - name: Run ruff
+        if: needs.detect.outputs.python == 'true'
+        run: |
+          pip install ruff --quiet
+          ruff check .
+      - name: No Python yet
+        if: needs.detect.outputs.python != 'true'
+        run: echo "No Python files tracked — lint gate not applicable yet."
+
+  test-and-coverage:
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.detect.outputs.tests == 'true'
+      - uses: actions/setup-python@v5
+        if: needs.detect.outputs.tests == 'true'
         with:
           python-version: "3.12"
       - name: Install test dependencies
+        if: needs.detect.outputs.tests == 'true'
         run: |
           pip install pytest pytest-cov --quiet
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f pyproject.toml ]; then pip install -e . --quiet || true; fi
       - name: Run tests with coverage gate (>= 80%)
-        run: |
-          set +e
-          pytest --cov=. --cov-report=term-missing --cov-fail-under=80
-          status=$?
-          set -e
-          if [ $status -eq 5 ]; then
-            echo "No tests collected yet — template repo has no source. Not failing the build."
-            exit 0
-          fi
-          exit $status
+        if: needs.detect.outputs.tests == 'true'
+        run: pytest --cov=. --cov-report=term-missing --cov-fail-under=80
+      - name: No tests yet
+        if: needs.detect.outputs.tests != 'true'
+        run: echo "No test files tracked — coverage gate not applicable yet."
 
   codeql:
+    needs: detect
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
     steps:
       - uses: actions/checkout@v4
+        if: needs.detect.outputs.python == 'true'
       - uses: github/codeql-action/init@v3
+        if: needs.detect.outputs.python == 'true'
         with:
           languages: python
       - uses: github/codeql-action/analyze@v3
+        if: needs.detect.outputs.python == 'true'
+      - name: No Python yet
+        if: needs.detect.outputs.python != 'true'
+        run: echo "No Python files tracked — CodeQL has nothing to analyse yet."
 
   dependency-review:
+    needs: detect
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -87,4 +143,9 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        if: needs.detect.outputs.manifests == 'true'
       - uses: actions/dependency-review-action@v4
+        if: needs.detect.outputs.manifests == 'true'
+      - name: No dependency manifests yet
+        if: needs.detect.outputs.manifests != 'true'
+        run: echo "No dependency manifests tracked — nothing for dependency review to compare."
