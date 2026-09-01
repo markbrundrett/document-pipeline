@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         if: needs.detect.outputs.python == 'true'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: needs.detect.outputs.python == 'true'
         with:
           python-version: "3.12"
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         if: needs.detect.outputs.tests == 'true'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: needs.detect.outputs.tests == 'true'
         with:
           python-version: "3.12"
