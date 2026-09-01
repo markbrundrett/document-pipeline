@@ -42,7 +42,7 @@ jobs:
             export -workspace /usr/local/structurizr/architecture/workspace.dsl -format static -output /usr/local/structurizr/site
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
