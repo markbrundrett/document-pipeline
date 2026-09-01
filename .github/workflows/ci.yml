@@ -144,7 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         if: needs.detect.outputs.manifests == 'true'
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         if: needs.detect.outputs.manifests == 'true'
       - name: No dependency manifests yet
         if: needs.detect.outputs.manifests != 'true'
